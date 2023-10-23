@@ -8,3 +8,6 @@
 - `/usr/local/Cellar/libcec/6.0.2/include/libcec/cec.h`
 - `export CFLAGS="-I/usr/local/Cellar/libcec/6.0.2/include"`
 - `python3 -m pip install --user cec`
+- `find /usr/local/Cellar/libcec -name libcec.6.dylib`
+- `export DYLD_LIBRARY_PATH="/usr/local/Cellar/libcec/6.0.2/lib:${DYLD_LIBRARY_PATH}"`
+- https://justaddpower.happyfox.com/kb/article/68-cec-over-ip-control

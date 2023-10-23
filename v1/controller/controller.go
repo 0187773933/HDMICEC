@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"unsafe"
 	"reflect"
+	// time "time"
 	// "sync"
 )
 
@@ -30,6 +31,7 @@ type Adapter struct {
 type Controller struct {
 	Configuration C.libcec_configuration
 	Connection C.libcec_connection_t
+	ConnComm *C.char
 	Adapter Adapter
 	LogicalAddress C.cec_logical_address
 	LogicalPhysicalAddress C.cec_logical_address
@@ -71,7 +73,6 @@ func get_adapters( conn C.libcec_connection_t ) ( result []Adapter ) {
 
 func ( ctrl Controller ) PowerOn() {
 	connection := C.libcec_initialise( &ctrl.Configuration )
-	defer C.free( unsafe.Pointer( connection ) )
 	adapters := get_adapters( connection )
 	if len( adapters ) < 1 { panic( "no adapters found ??" ) }
 	adapter := adapters[ 0 ]
@@ -98,12 +99,12 @@ func ( ctrl Controller ) PowerOn() {
 	result := C.libcec_transmit( connection , &command )
 	fmt.Println( result )
 	C.libcec_close( connection )
+	C.libcec_destroy( connection )
 	C.free( unsafe.Pointer( comm ) )
 }
 
 func ( ctrl Controller ) PowerOff() {
 	connection := C.libcec_initialise( &ctrl.Configuration )
-	defer C.free( unsafe.Pointer( connection ) )
 	adapters := get_adapters( connection )
 	if len( adapters ) < 1 { panic( "no adapters found ??" ) }
 	adapter := adapters[ 0 ]
@@ -130,5 +131,99 @@ func ( ctrl Controller ) PowerOff() {
 	result := C.libcec_transmit( connection , &command )
 	fmt.Println( result )
 	C.libcec_close( connection )
+	C.libcec_destroy( connection )
 	C.free( unsafe.Pointer( comm ) )
+}
+
+func (ctrl *Controller) SelectHDMI1() {
+	connection := C.libcec_initialise(&ctrl.Configuration)
+	adapters := get_adapters(connection)
+	if len(adapters) < 1 {
+		panic("no adapters found")
+	}
+	adapter := adapters[0]
+	comm := C.CString(adapter.Comm)
+
+	if C.libcec_open(connection, comm, C.CEC_DEFAULT_CONNECT_TIMEOUT) == 0 {
+		panic("Failed to open a connection to the adapter")
+	}
+
+	// Get the logical address of the current device.
+	logical_addresses := C.libcec_get_logical_addresses(connection)
+	logical_address := C.cec_logical_address(byte(logical_addresses.primary))
+
+	fmt.Println("Selecting HDMI 1")
+
+	var command C.cec_command
+	command.initiator = logical_address
+	command.destination = 0xF // Broadcast to all devices.
+	command.opcode_set = 1
+	command.opcode = C.CEC_OPCODE_ACTIVE_SOURCE // Opcode for "active source"
+	command.parameters.size = 2
+
+	// This is the physical address for HDMI 1 input, typically "1.0.0.0".
+	// This might need to be changed depending on your device's configuration.
+	command.parameters.data[0] = 0x10 // "1.0" part of the address
+	command.parameters.data[1] = 0x00 // ".0.0" part of the address
+
+	// Transmit the command
+	if result := C.libcec_transmit(connection, &command); result == 0 {
+		fmt.Println("Failed to send command")
+	} else {
+		fmt.Println("Command sent successfully")
+	}
+
+	C.libcec_close( connection )
+	C.libcec_destroy( connection )
+	// C.free( unsafe.Pointer( connection ) )
+	C.free( unsafe.Pointer( comm ) )
+}
+
+func (ctrl *Controller) SelectHDMI2() {
+	connection := C.libcec_initialise(&ctrl.Configuration)
+	adapters := get_adapters(connection)
+	if len(adapters) < 1 {
+		panic("no adapters found")
+	}
+	adapter := adapters[0]
+	comm := C.CString(adapter.Comm)
+	if C.libcec_open(connection, comm, C.CEC_DEFAULT_CONNECT_TIMEOUT) == 0 {
+		panic("Failed to open a connection to the adapter")
+	}
+
+	// Get the logical address of the current device.
+	logical_addresses := C.libcec_get_logical_addresses(connection)
+	logical_address := C.cec_logical_address(byte(logical_addresses.primary))
+
+	fmt.Println("Selecting HDMI 2")
+
+	var command C.cec_command
+	command.initiator = logical_address
+	command.destination = 0xF // Broadcast to all devices.
+	command.opcode_set = 1
+	command.opcode = 0x82 // Opcode for "active source"
+	command.parameters.size = 2
+	command.parameters.data[0] = 0x20  // New address (2.0.0.0), first part
+	command.parameters.data[1] = 0x00  // New address (2.0.0.0), second part
+
+
+	// Transmit the command
+	if result := C.libcec_transmit(connection, &command); result == 0 {
+		fmt.Println("Failed to send command")
+	} else {
+		fmt.Println("Command sent successfully")
+	}
+	// C.libcec_transmit(connection, &command)
+	// C.libcec_transmit(connection, &command)
+	// C.libcec_transmit(connection, &command)
+	// C.libcec_transmit(connection, &command)
+	// C.libcec_transmit(connection, &command)
+
+	// time.Sleep( 1 * time.Second )
+	// C.libcec_close( connection )
+	// C.libcec_destroy( connection )
+	// time.Sleep( 1 * time.Second )
+
+	// C.free( unsafe.Pointer( connection ) )
+	// C.free( unsafe.Pointer( comm ) )
 }
