@@ -1,0 +1,11 @@
+COPYING
+MANIFEST.in
+README.md
+cec.cpp
+device.cpp
+device.h
+setup.py
+cec.egg-info/PKG-INFO
+cec.egg-info/SOURCES.txt
+cec.egg-info/dependency_links.txt
+cec.egg-info/top_level.txt
