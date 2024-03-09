@@ -23,6 +23,7 @@ import (
 	"strings"
 	// time "time"
 	// "sync"
+	"strconv"
 	"encoding/json"
 	"bytes"
 	"os/exec"
@@ -66,6 +67,11 @@ func PrettyPrint( input interface{} ) {
 	fmt.Println( string( jd ) )
 }
 
+func StringToInt( input string ) ( result int ) {
+	result , _ = strconv.Atoi( input )
+	return
+}
+
 func ( ctrl Controller ) GetPowerStatus() (result bool) {
 	cmd := exec.Command("cec-client", "-s", "-d", "1")
 	cmd.Stdin = bytes.NewBufferString("pow 0.0.0.0\n")
@@ -90,6 +96,7 @@ func ( ctrl Controller ) GetPowerStatus() (result bool) {
 type Source struct {
 	DeviceName string
 	Address string
+	HDMIInput int
 	ActiveSource bool
 	Vendor string
 	OSDString string
@@ -114,6 +121,7 @@ func ( ctrl Controller ) GetActiveSource() ( result Source ) {
 		}
 		if strings.Contains( line , "address:" ) {
 			latest_device.Address = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+			latest_device.HDMIInput = StringToInt( string( latest_device.Address[ 0 ] ) )
 		}
 		if strings.Contains( line , "active source:" ) {
 			as_string := strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
@@ -168,6 +176,8 @@ func ( ctrl Controller ) GetSources() ( result []Source ) {
 		}
 		if strings.Contains( line , "address:" ) {
 			latest_device.Address = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+			latest_device.Address = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+			latest_device.HDMIInput = StringToInt( string( latest_device.Address[ 0 ] ) )
 		}
 		if strings.Contains( line , "active source:" ) {
 			as_string := strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
