@@ -101,7 +101,6 @@ type Source struct {
 	Vendor string
 	OSDString string
 	PowerStatus bool
-	// HDMI int
 }
 func ( ctrl Controller ) GetActiveSource() ( result Source ) {
 	cmd := exec.Command( "cec-client" , "-s" , "-d" , "1" )
