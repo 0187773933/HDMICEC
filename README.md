@@ -15,7 +15,7 @@
 - `find /usr/local/Cellar/libcec -name libcec.6.dylib`
 - `export DYLD_LIBRARY_PATH="/usr/local/Cellar/libcec/6.0.2/lib:${DYLD_LIBRARY_PATH}"`
 - https://justaddpower.happyfox.com/kb/article/68-cec-over-ip-control
-- https://github.com/Pulse-Eight/libcec/issues/223
+- https://github.com/Pulse-Eight/libcec/issues/223?
 
 ## Vendor IDS
 
