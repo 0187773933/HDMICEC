@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"bytes"
 	"os/exec"
+	try "github.com/manucorporat/try"
 )
 
 type Adapter struct {
@@ -72,24 +73,29 @@ func StringToInt( input string ) ( result int ) {
 	return
 }
 
-func ( ctrl Controller ) GetPowerStatus() (result bool) {
-	cmd := exec.Command("cec-client", "-s", "-d", "1")
-	cmd.Stdin = bytes.NewBufferString("pow 0.0.0.0\n")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
-	if err != nil {
-		return false
-	}
-
-	output := out.String()
-	if strings.Contains(output, "power status: on") {
-		return true
-	} else if strings.Contains(output, "power status: standby") {
-		return false
-	}
-
-	return false
+func ( ctrl Controller ) GetPowerStatus() ( result bool ) {
+	result = false
+	try.This( func() {
+		cmd := exec.Command( "cec-client" , "-s" , "-d" , "1" )
+		cmd.Stdin = bytes.NewBufferString( "pow 0.0.0.0\n" )
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		err := cmd.Run()
+		if err != nil { return }
+		output := out.String()
+		if strings.Contains( output , "power status: on" ) {
+			result = true
+			return
+		} else if strings.Contains( output , "power status: standby" ) {
+			result = false
+			return
+		}
+	}).Catch( func( e try.E ) {
+		fmt.Println( e )
+		fmt.Println( "GetPowerStatus() Failed" )
+		result = false
+	})
+	return
 }
 
 // echo 'scan' | cec-client -s -d 1
@@ -101,419 +107,365 @@ type Source struct {
 	Vendor string
 	OSDString string
 	PowerStatus bool
+	// HDMI int
 }
 func ( ctrl Controller ) GetActiveSource() ( result Source ) {
-	cmd := exec.Command( "cec-client" , "-s" , "-d" , "1" )
-	cmd.Stdin = bytes.NewBufferString( "scan\n" )
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
-	if err != nil { return }
-	output := out.String()
-	lines := strings.Split( output , "\n" )
-	var latest_device Source
-	// var devices []Source
-	for _ , line := range lines {
-		// fmt.Println( i , "===" , line )
-		if strings.Contains( line , "device #" ) {
-			latest_device.DeviceName = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
-		}
-		if strings.Contains( line , "address:" ) {
-			latest_device.Address = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
-			latest_device.HDMIInput = StringToInt( string( latest_device.Address[ 0 ] ) )
-		}
-		if strings.Contains( line , "active source:" ) {
-			as_string := strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
-			switch as_string {
-				case "yes":
-					latest_device.ActiveSource = true
-					break;
-				case "no":
-					latest_device.ActiveSource = false
-					break;
+	try.This( func() {
+		cmd := exec.Command( "cec-client" , "-s" , "-d" , "1" )
+		cmd.Stdin = bytes.NewBufferString( "scan\n" )
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		err := cmd.Run()
+		if err != nil { return }
+		output := out.String()
+		lines := strings.Split( output , "\n" )
+		var latest_device Source
+		for _ , line := range lines {
+			// fmt.Println( i , "===" , line )
+			if strings.Contains( line , "device #" ) {
+				latest_device.DeviceName = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+			}
+			if strings.Contains( line , "address:" ) {
+				latest_device.Address = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+				latest_device.HDMIInput = StringToInt( string( latest_device.Address[ 0 ] ) )
+			}
+			if strings.Contains( line , "active source:" ) {
+				as_string := strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+				switch as_string {
+					case "yes":
+						latest_device.ActiveSource = true
+						break;
+					case "no":
+						latest_device.ActiveSource = false
+						break;
+				}
+			}
+			if strings.Contains( line , "vendor:" ) {
+				latest_device.Vendor = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+			}
+			if strings.Contains( line , "osd string:" ) {
+				latest_device.OSDString = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+			}
+			if strings.Contains( line , "power status:" ) {
+				ps_string := strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+				switch ps_string {
+					case "on":
+						latest_device.PowerStatus = true
+						break;
+					case "off":
+						latest_device.PowerStatus = false
+						break;
+				}
+				if latest_device.ActiveSource == true {
+					result = latest_device
+					return
+				}
 			}
 		}
-		if strings.Contains( line , "vendor:" ) {
-			latest_device.Vendor = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
-		}
-		if strings.Contains( line , "osd string:" ) {
-			latest_device.OSDString = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
-		}
-		if strings.Contains( line , "power status:" ) {
-			ps_string := strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
-			switch ps_string {
-				case "on":
-					latest_device.PowerStatus = true
-					break;
-				case "off":
-					latest_device.PowerStatus = false
-					break;
-			}
-			if latest_device.ActiveSource == true {
-				return latest_device
-			}
-			// devices = append( devices , latest_device )
-			// latest_device = Source{}
-		}
-	}
+	}).Catch( func( e try.E ) {
+		fmt.Println( e )
+		fmt.Println( "GetActiveSource() Failed" )
+	})
 	return
 }
 
 func ( ctrl Controller ) GetSources() ( result []Source ) {
-	cmd := exec.Command( "cec-client" , "-s" , "-d" , "1" )
-	cmd.Stdin = bytes.NewBufferString( "scan\n" )
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
-	if err != nil { return }
-	output := out.String()
-	lines := strings.Split( output , "\n" )
-	var latest_device Source
-	for _ , line := range lines {
-		if strings.Contains( line , "device #" ) {
-			latest_device.DeviceName = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
-		}
-		if strings.Contains( line , "address:" ) {
-			latest_device.Address = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
-			latest_device.Address = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
-			latest_device.HDMIInput = StringToInt( string( latest_device.Address[ 0 ] ) )
-		}
-		if strings.Contains( line , "active source:" ) {
-			as_string := strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
-			switch as_string {
-				case "yes":
-					latest_device.ActiveSource = true
-					break;
-				case "no":
-					latest_device.ActiveSource = false
-					break;
+	try.This( func() {
+		cmd := exec.Command( "cec-client" , "-s" , "-d" , "1" )
+		cmd.Stdin = bytes.NewBufferString( "scan\n" )
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		err := cmd.Run()
+		if err != nil { return }
+		output := out.String()
+		lines := strings.Split( output , "\n" )
+		var latest_device Source
+		for _ , line := range lines {
+			if strings.Contains( line , "device #" ) {
+				latest_device.DeviceName = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+			}
+			if strings.Contains( line , "address:" ) {
+				latest_device.Address = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+				latest_device.Address = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+				latest_device.HDMIInput = StringToInt( string( latest_device.Address[ 0 ] ) )
+			}
+			if strings.Contains( line , "active source:" ) {
+				as_string := strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+				switch as_string {
+					case "yes":
+						latest_device.ActiveSource = true
+						break;
+					case "no":
+						latest_device.ActiveSource = false
+						break;
+				}
+			}
+			if strings.Contains( line , "vendor:" ) {
+				latest_device.Vendor = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+			}
+			if strings.Contains( line , "osd string:" ) {
+				latest_device.OSDString = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+			}
+			if strings.Contains( line , "power status:" ) {
+				ps_string := strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
+				switch ps_string {
+					case "on":
+						latest_device.PowerStatus = true
+						break;
+					case "off":
+						latest_device.PowerStatus = false
+						break;
+				}
+				result = append( result , latest_device )
+				latest_device = Source{}
 			}
 		}
-		if strings.Contains( line , "vendor:" ) {
-			latest_device.Vendor = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
-		}
-		if strings.Contains( line , "osd string:" ) {
-			latest_device.OSDString = strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
-		}
-		if strings.Contains( line , "power status:" ) {
-			ps_string := strings.TrimSpace( strings.Split( line , ":" )[ 1 ] )
-			switch ps_string {
-				case "on":
-					latest_device.PowerStatus = true
-					break;
-				case "off":
-					latest_device.PowerStatus = false
-					break;
-			}
-			result = append( result , latest_device )
-			latest_device = Source{}
-		}
-	}
+	}).Catch( func( e try.E ) {
+		fmt.Println( e )
+		fmt.Println( "PowerOn() Failed" )
+	})
 	return
 }
 
 func get_adapters( conn C.libcec_connection_t ) ( result []Adapter ) {
-	var found_devices [ 10 ]C.cec_adapter
-	count := int( C.libcec_find_adapters( conn , &found_devices[ 0 ] , C.uchar( len( found_devices ) ) , nil ) )
-	fmt.Println( "adapters found ===" , count )
-	for i := 0; i < count; i++ {
-		xa := Adapter{
-			Path: C.GoString( &found_devices[i].path[ 0 ] ) ,
-			Comm: C.GoString( &found_devices[i].comm[ 0 ] ) ,
+	try.This( func() {
+		var found_devices [ 10 ]C.cec_adapter
+		count := int( C.libcec_find_adapters( conn , &found_devices[ 0 ] , C.uchar( len( found_devices ) ) , nil ) )
+		fmt.Println( "adapters found ===" , count )
+		for i := 0; i < count; i++ {
+			xa := Adapter{
+				Path: C.GoString( &found_devices[i].path[ 0 ] ) ,
+				Comm: C.GoString( &found_devices[i].comm[ 0 ] ) ,
+			}
+			result = append( result , xa )
 		}
-		result = append( result , xa )
-	}
+	}).Catch( func( e try.E ) {
+		fmt.Println( e )
+		fmt.Println( "get_adapters() Failed" )
+	})
 	return
 }
 
-func ( ctrl Controller ) PowerOn() {
-	connection := C.libcec_initialise( &ctrl.Configuration )
-	adapters := get_adapters( connection )
-	if len( adapters ) < 1 { panic( "no adapters found ??" ) }
-	adapter := adapters[ 0 ]
-	fmt.Println( reflect.TypeOf( adapter ) )
-	comm := C.CString( adapter.Comm ) // its like golang garbage collects this
-	fmt.Println( reflect.TypeOf( comm ) )
-	if C.libcec_open( connection , comm , C.CEC_DEFAULT_CONNECT_TIMEOUT ) == 0 {
-		panic( "Failed to open a connection to the adapter" )
-	}
-	logical_addresses := C.libcec_get_logical_addresses( connection )
-	logical_address := C.cec_logical_address( byte( logical_addresses.primary ) )
-	physical_address := C.libcec_get_device_physical_address( connection , logical_address )
-	fmt.Println( "physical address ===" , physical_address , ( physical_address >> 8 ) , ( physical_address & 0xFF ) )
-	logical_physical_address := C.cec_logical_address( physical_address )
-	fmt.Println( "physical address ===" , logical_physical_address )
+func ( ctrl Controller ) PowerOn() ( result bool ) {
+	try.This( func() {
+		connection := C.libcec_initialise( &ctrl.Configuration )
+		adapters := get_adapters( connection )
+		if len( adapters ) < 1 {
+			fmt.Println( "no adapters found ??" )
+			result = false
+			return
+		}
+		adapter := adapters[ 0 ]
+		fmt.Println( reflect.TypeOf( adapter ) )
+		comm := C.CString( adapter.Comm ) // its like golang garbage collects this
+		fmt.Println( reflect.TypeOf( comm ) )
+		if C.libcec_open( connection , comm , C.CEC_DEFAULT_CONNECT_TIMEOUT ) == 0 {
+			fmt.Println( "Failed to open a connection to the adapter" )
+			result = false
+			return
+		}
+		logical_addresses := C.libcec_get_logical_addresses( connection )
+		logical_address := C.cec_logical_address( byte( logical_addresses.primary ) )
+		physical_address := C.libcec_get_device_physical_address( connection , logical_address )
+		fmt.Println( "physical address ===" , physical_address , ( physical_address >> 8 ) , ( physical_address & 0xFF ) )
+		logical_physical_address := C.cec_logical_address( physical_address )
+		fmt.Println( "physical address ===" , logical_physical_address )
 
-	fmt.Println( "sending poweron command" , 0 )
-	var command C.cec_command
-	command.initiator = logical_address
-	command.destination = C.cec_logical_address( 0 )
-	command.opcode_set = 1
-	command.opcode = 0x04
-	// // messageLength := len(message)
-	result := C.libcec_transmit( connection , &command )
-	fmt.Println( result )
-	C.libcec_close( connection )
-	C.libcec_destroy( connection )
-	C.free( unsafe.Pointer( comm ) )
+		fmt.Println( "sending poweron command" , 0 )
+		var command C.cec_command
+		command.initiator = logical_address
+		command.destination = C.cec_logical_address( 0 )
+		command.opcode_set = 1
+		command.opcode = 0x04
+		// // messageLength := len(message)
+		if transmit_result := C.libcec_transmit( connection , &command ); transmit_result == 0 {
+			fmt.Println( "Failed to send command" )
+		} else {
+			fmt.Println( "Command sent successfully" )
+			result = true
+		}
+		C.libcec_close( connection )
+		C.libcec_destroy( connection )
+		C.free( unsafe.Pointer( comm ) )
+		result = true
+	}).Catch( func( e try.E ) {
+		fmt.Println( e )
+		fmt.Println( "PowerOn() Failed" )
+		result = false
+	})
+	return
 }
 
-func ( ctrl Controller ) PowerOff() {
-	connection := C.libcec_initialise( &ctrl.Configuration )
-	adapters := get_adapters( connection )
-	if len( adapters ) < 1 { panic( "no adapters found ??" ) }
-	adapter := adapters[ 0 ]
-	fmt.Println( reflect.TypeOf( adapter ) )
-	comm := C.CString( adapter.Comm ) // its like golang garbage collects this
-	fmt.Println( reflect.TypeOf( comm ) )
-	if C.libcec_open( connection , comm , C.CEC_DEFAULT_CONNECT_TIMEOUT ) == 0 {
-		panic( "Failed to open a connection to the adapter" )
-	}
-	logical_addresses := C.libcec_get_logical_addresses( connection )
-	logical_address := C.cec_logical_address( byte( logical_addresses.primary ) )
-	physical_address := C.libcec_get_device_physical_address( connection , logical_address )
-	fmt.Println( "physical address ===" , physical_address , ( physical_address >> 8 ) , ( physical_address & 0xFF ) )
-	logical_physical_address := C.cec_logical_address( physical_address )
-	fmt.Println( "physical address ===" , logical_physical_address )
+func ( ctrl Controller ) PowerOff() ( result bool ) {
+	result = false
+	try.This( func() {
+		connection := C.libcec_initialise( &ctrl.Configuration )
+		adapters := get_adapters( connection )
+		if len( adapters ) < 1 { fmt.Println( "no adapters found ??" ); return; }
+		adapter := adapters[ 0 ]
+		fmt.Println( reflect.TypeOf( adapter ) )
+		comm := C.CString( adapter.Comm ) // its like golang garbage collects this
+		fmt.Println( reflect.TypeOf( comm ) )
+		if C.libcec_open( connection , comm , C.CEC_DEFAULT_CONNECT_TIMEOUT ) == 0 {
+			fmt.Println( "Failed to open a connection to the adapter" )
+			return
+		}
+		logical_addresses := C.libcec_get_logical_addresses( connection )
+		logical_address := C.cec_logical_address( byte( logical_addresses.primary ) )
+		physical_address := C.libcec_get_device_physical_address( connection , logical_address )
+		fmt.Println( "physical address ===" , physical_address , ( physical_address >> 8 ) , ( physical_address & 0xFF ) )
+		logical_physical_address := C.cec_logical_address( physical_address )
+		fmt.Println( "physical address ===" , logical_physical_address )
 
-	fmt.Println( "sending standby command" , 0 )
-	var command C.cec_command
-	command.initiator = logical_address
-	command.destination = C.cec_logical_address( 0 )
-	command.opcode_set = 1
-	command.opcode = 0x36
-	// // messageLength := len(message)
-	result := C.libcec_transmit( connection , &command )
-	fmt.Println( result )
-	C.libcec_close( connection )
-	C.libcec_destroy( connection )
-	C.free( unsafe.Pointer( comm ) )
+		fmt.Println( "sending standby command" , 0 )
+		var command C.cec_command
+		command.initiator = logical_address
+		// command.destination = C.cec_logical_address( 0 )
+		command.destination = C.cec_logical_address( 0 )
+		command.opcode_set = 1
+		command.opcode = 0x36
+		// // messageLength := len(message)
+		if transmit_result := C.libcec_transmit( connection , &command ); transmit_result == 0 {
+			fmt.Println( "Failed to send command" )
+		} else {
+			fmt.Println( "Command sent successfully" )
+			result = true
+		}
+		C.libcec_close( connection )
+		C.libcec_destroy( connection )
+		C.free( unsafe.Pointer( comm ) )
+		result = true
+	}).Catch( func( e try.E ) {
+		fmt.Println( e )
+		fmt.Println( "PowerOff() Failed" )
+		result = false
+	})
+	return
 }
 
-func (ctrl *Controller) SelectHDMI1() {
-	connection := C.libcec_initialise(&ctrl.Configuration)
-	adapters := get_adapters(connection)
-	if len( adapters ) < 1 {
-		panic( "no adapters found" )
-	}
-	adapter := adapters[0]
-	comm := C.CString( adapter.Comm )
+func ( ctrl *Controller ) SelectHDMI( hdmi int ) ( result bool ) {
+	result = false
+	try.This( func() {
+		connection := C.libcec_initialise(&ctrl.Configuration)
+		adapters := get_adapters(connection)
+		if len(adapters) < 1 {
+			fmt.Println("no adapters found")
+			return
+		}
+		adapter := adapters[0]
+		comm := C.CString(adapter.Comm)
+		if C.libcec_open(connection, comm, C.CEC_DEFAULT_CONNECT_TIMEOUT) == 0 {
+			fmt.Println("Failed to open a connection to the adapter")
+			return
+		}
 
-	if C.libcec_open(connection, comm, C.CEC_DEFAULT_CONNECT_TIMEOUT) == 0 {
-		panic("Failed to open a connection to the adapter")
-	}
+		// Get the logical address of the current device.
+		logical_addresses := C.libcec_get_logical_addresses(connection)
+		logical_address := C.cec_logical_address(byte(logical_addresses.primary))
 
-	// Get the logical address of the current device.
-	logical_addresses := C.libcec_get_logical_addresses(connection)
-	logical_address := C.cec_logical_address(byte(logical_addresses.primary))
+		fmt.Printf( "Selecting HDMI %d\n" , hdmi )
 
-	fmt.Println("Selecting HDMI 1")
+		var command C.cec_command
+		command.initiator = logical_address
+		command.destination = 0xF // Broadcast to all devices.
+		command.opcode_set = 1
+		command.opcode = 0x82 // Opcode for "active source"
+		command.parameters.size = 2
+		// command.parameters.data[0] = 0x20  // New address (2.0.0.0), first part
+		hdmi_result := ( hdmi << 4 ) | 0x00
+		command.parameters.data[0] = C.uchar( hdmi_result )
+		command.parameters.data[1] = 0x00  // New address (2.0.0.0), second part
 
-	var command C.cec_command
-	command.initiator = logical_address
-	command.destination = 0xF // Broadcast to all devices.
-	command.opcode_set = 1
-	command.opcode = C.CEC_OPCODE_ACTIVE_SOURCE // Opcode for "active source"
-	command.parameters.size = 2
 
-	// This is the physical address for HDMI 1 input, typically "1.0.0.0".
-	// This might need to be changed depending on your device's configuration.
-	command.parameters.data[0] = 0x10 // "1.0" part of the address
-	command.parameters.data[1] = 0x00 // ".0.0" part of the address
+		// Transmit the command
+		if transmit_result := C.libcec_transmit( connection , &command ); transmit_result == 0 {
+			fmt.Println( "Failed to send command" )
+		} else {
+			fmt.Println( "Command sent successfully" )
+			result = true
+		}
 
-	// Transmit the command
-	if result := C.libcec_transmit(connection, &command); result == 0 {
-		fmt.Println("Failed to send command")
-	} else {
-		fmt.Println("Command sent successfully")
-	}
+		C.libcec_close( connection )
+		C.libcec_destroy( connection )
+		C.free( unsafe.Pointer( comm ) )
 
-	C.libcec_close( connection )
-	C.libcec_destroy( connection )
-	// C.free( unsafe.Pointer( connection ) )
-	C.free( unsafe.Pointer( comm ) )
+	}).Catch( func( e try.E ) {
+		fmt.Println( e )
+		fmt.Println( "SelectHDMI() Failed" )
+		result = false
+	})
+	return
 }
 
-func (ctrl *Controller) SelectHDMI2() {
-	connection := C.libcec_initialise(&ctrl.Configuration)
-	adapters := get_adapters(connection)
-	if len(adapters) < 1 {
-		panic("no adapters found")
-	}
-	adapter := adapters[0]
-	comm := C.CString(adapter.Comm)
-	if C.libcec_open(connection, comm, C.CEC_DEFAULT_CONNECT_TIMEOUT) == 0 {
-		panic("Failed to open a connection to the adapter")
-	}
 
-	// Get the logical address of the current device.
-	logical_addresses := C.libcec_get_logical_addresses(connection)
-	logical_address := C.cec_logical_address(byte(logical_addresses.primary))
+func ( ctrl *Controller ) Mute() ( result bool ) {
+	result = false
+	try.This( func() {
+		connection := C.libcec_initialise( &ctrl.Configuration )
+		adapters := get_adapters(connection)
+		if len( adapters ) < 1 {
+			fmt.Println( "no adapters found" )
+			return
+		}
+		adapter := adapters[0]
+		comm := C.CString(adapter.Comm)
 
-	fmt.Println("Selecting HDMI 2")
+		if C.libcec_open(connection, comm, C.CEC_DEFAULT_CONNECT_TIMEOUT) == 0 {
+			fmt.Println( "Failed to open a connection to the adapter" )
+			return
+		}
 
-	var command C.cec_command
-	command.initiator = logical_address
-	command.destination = 0xF // Broadcast to all devices.
-	command.opcode_set = 1
-	command.opcode = 0x82 // Opcode for "active source"
-	command.parameters.size = 2
-	command.parameters.data[0] = 0x20  // New address (2.0.0.0), first part
-	command.parameters.data[1] = 0x00  // New address (2.0.0.0), second part
+		// Get the logical address of the current device.
+		logical_addresses := C.libcec_get_logical_addresses( connection )
+		logical_address := C.cec_logical_address( byte( logical_addresses.primary ) )
+		fmt.Println( "logical address ===" , logical_address )
+		physical_address := C.libcec_get_device_physical_address( connection , logical_address )
+		fmt.Println( "physical address ===" , physical_address , ( physical_address >> 8 ) , ( physical_address & 0xFF ) )
+		logical_physical_address := C.cec_logical_address( physical_address )
+		fmt.Println( "logical physical address ===" , logical_physical_address )
 
+		fmt.Println( "Muting TV" )
 
-	// Transmit the command
-	if result := C.libcec_transmit(connection, &command); result == 0 {
-		fmt.Println("Failed to send command")
-	} else {
-		fmt.Println("Command sent successfully")
-	}
-	// C.libcec_transmit(connection, &command)
-	// C.libcec_transmit(connection, &command)
-	// C.libcec_transmit(connection, &command)
-	// C.libcec_transmit(connection, &command)
-	// C.libcec_transmit(connection, &command)
+		var command C.cec_command
+		command.initiator = logical_address
+		command.destination = C.cec_logical_address( 0 )
+		command.opcode_set = 1
+		command.opcode = 0x44
+		command.parameters.size = 1
+		command.parameters.data[0] = 0x43
 
-	// time.Sleep( 1 * time.Second )
-	// C.libcec_close( connection )
-	// C.libcec_destroy( connection )
-	// time.Sleep( 1 * time.Second )
+		// Transmit the command
+		if transmit_result := C.libcec_transmit( connection , &command ); transmit_result == 0 {
+			fmt.Println( "Failed to send command" )
+		} else {
+			fmt.Println( "Command sent successfully" )
+			result = true
+		}
 
-	// C.free( unsafe.Pointer( connection ) )
-	// C.free( unsafe.Pointer( comm ) )
-}
+		var release_command C.cec_command
+		release_command.initiator = logical_address
+		release_command.destination = C.cec_logical_address( 0 )
+		release_command.opcode_set = 1
+		release_command.opcode = 0x45 // Release
 
-func ( ctrl *Controller ) SelectHDMI( hdmi int ) {
-	connection := C.libcec_initialise(&ctrl.Configuration)
-	adapters := get_adapters(connection)
-	if len(adapters) < 1 {
-		panic("no adapters found")
-	}
-	adapter := adapters[0]
-	comm := C.CString(adapter.Comm)
-	if C.libcec_open(connection, comm, C.CEC_DEFAULT_CONNECT_TIMEOUT) == 0 {
-		panic("Failed to open a connection to the adapter")
-	}
+		// Transmit the command
+		if transmit_release_result := C.libcec_transmit( connection , &release_command ); transmit_release_result == 0 {
+			fmt.Println( "Failed to send release command" )
+			result = false
+		} else {
+			fmt.Println( "Release Command sent successfully" )
+			result = true
+		}
 
-	// Get the logical address of the current device.
-	logical_addresses := C.libcec_get_logical_addresses(connection)
-	logical_address := C.cec_logical_address(byte(logical_addresses.primary))
-
-	fmt.Printf( "Selecting HDMI %d\n" , hdmi )
-
-	var command C.cec_command
-	command.initiator = logical_address
-	command.destination = 0xF // Broadcast to all devices.
-	command.opcode_set = 1
-	command.opcode = 0x82 // Opcode for "active source"
-	command.parameters.size = 2
-	// command.parameters.data[0] = 0x20  // New address (2.0.0.0), first part
-	hdmi_result := ( hdmi << 4 ) | 0x00
-	command.parameters.data[0] = C.uchar( hdmi_result )
-	command.parameters.data[1] = 0x00  // New address (2.0.0.0), second part
-
-
-	// Transmit the command
-	if result := C.libcec_transmit(connection, &command); result == 0 {
-		fmt.Println("Failed to send command")
-	} else {
-		fmt.Println("Command sent successfully")
-	}
-}
-
-// func (ctrl *Controller) GetPowerStatus() (result string) {
-//     connection := C.libcec_initialise(&ctrl.Configuration)
-//     adapters := get_adapters(connection)
-//     if len(adapters) < 1 {
-//         panic("no adapters found")
-//     }
-//     adapter := adapters[0]
-//     comm := C.CString(adapter.Comm)
-//     defer C.free(unsafe.Pointer(comm))
-
-//     if C.libcec_open(connection, comm, C.CEC_DEFAULT_CONNECT_TIMEOUT) == 0 {
-//         panic("Failed to open a connection to the adapter")
-//     }
-
-//     // Assuming that you are querying the TV.
-//     logical_address := C.cec_logical_address(0)
-
-//     fmt.Println("Sending Power Status Inquiry")
-
-//     var command C.cec_command
-//     command.initiator = C.cec_logical_address(ctrl.Configuration.logicalAddress) // Assuming you've set this to your device's logical address.
-//     command.destination = logical_address
-//     command.opcode_set = 1
-//     command.opcode = C.CEC_OPCODE_GIVE_DEVICE_POWER_STATUS
-//     command.parameters.size = 0
-
-//     if C.libcec_transmit(connection, &command) == 0 {
-//         fmt.Println("Failed to send command")
-//         return "Failed to send command"
-//     }
-
-//     // Now, you need to listen for the response.
-//     // This is a simplified loop, in practice, you would have timeout handling, and possibly this would be event-driven.
-//     for {
-//         msg := C.libcec_receive_message(connection)
-//         if msg.opcode == C.CEC_OPCODE_REPORT_POWER_STATUS {
-//             // Assuming the status is in the first parameter and is a direct mapping of CEC power status codes.
-//             switch msg.parameters.data[0] {
-//             case 0:
-//                 return "TV is on"
-//             case 1:
-//                 return "TV is in standby"
-//             case 2:
-//                 return "TV is in transition from standby to on"
-//             case 3:
-//                 return "TV is in transition from on to standby"
-//             default:
-//                 return "Unknown power status"
-//             }
-//         }
-//     }
-// }
-
-
-
-func (ctrl *Controller) Mute() {
-	connection := C.libcec_initialise(&ctrl.Configuration)
-	adapters := get_adapters(connection)
-	if len(adapters) < 1 {
-		panic("no adapters found")
-	}
-	adapter := adapters[0]
-	comm := C.CString(adapter.Comm)
-
-	if C.libcec_open(connection, comm, C.CEC_DEFAULT_CONNECT_TIMEOUT) == 0 {
-		panic("Failed to open a connection to the adapter")
-	}
-
-	// Get the logical address of the current device.
-	logical_addresses := C.libcec_get_logical_addresses(connection)
-	logical_address := C.cec_logical_address(byte(logical_addresses.primary))
-
-	fmt.Println("Muting TV")
-
-	var command C.cec_command
-	command.initiator = logical_address
-	command.destination = C.cec_logical_address( 0 )
-	command.opcode_set = 1
-	command.opcode = 0x44 // Opcode for "active source"
-	command.parameters.size = 1
-	command.parameters.data[0] = 0x43 // "1.0" part of the address
-
-	// Transmit the command
-	if result := C.libcec_transmit(connection, &command); result == 0 {
-		fmt.Println("Failed to send command")
-	} else {
-		fmt.Println("Command sent successfully")
-	}
-
-	C.libcec_close( connection )
-	C.libcec_destroy( connection )
-	// C.free( unsafe.Pointer( connection ) )
-	C.free( unsafe.Pointer( comm ) )
+		C.libcec_close( connection )
+		C.libcec_destroy( connection )
+		C.free( unsafe.Pointer( comm ) )
+	}).Catch( func( e try.E ) {
+		fmt.Println( e )
+		fmt.Println( "PowerOn() Failed" )
+		result = false
+	})
+	return
 }
 
 // CONFIRMED WORKS FOR MUTE TOGGLE DON'T TOUCH
@@ -586,14 +538,157 @@ func Test() {
 	result := C.libcec_transmit( connection , &command )
 	fmt.Println( result )
 
-
-
-
 	// Close
 	C.libcec_close( connection )
 	C.libcec_destroy( connection )
 	C.free( unsafe.Pointer( comm ) )
 }
+
+// func (ctrl *Controller) GetPowerStatus() (result string) {
+//     connection := C.libcec_initialise(&ctrl.Configuration)
+//     adapters := get_adapters(connection)
+//     if len(adapters) < 1 {
+//         panic("no adapters found")
+//     }
+//     adapter := adapters[0]
+//     comm := C.CString(adapter.Comm)
+//     defer C.free(unsafe.Pointer(comm))
+
+//     if C.libcec_open(connection, comm, C.CEC_DEFAULT_CONNECT_TIMEOUT) == 0 {
+//         panic("Failed to open a connection to the adapter")
+//     }
+
+//     // Assuming that you are querying the TV.
+//     logical_address := C.cec_logical_address(0)
+
+//     fmt.Println("Sending Power Status Inquiry")
+
+//     var command C.cec_command
+//     command.initiator = C.cec_logical_address(ctrl.Configuration.logicalAddress) // Assuming you've set this to your device's logical address.
+//     command.destination = logical_address
+//     command.opcode_set = 1
+//     command.opcode = C.CEC_OPCODE_GIVE_DEVICE_POWER_STATUS
+//     command.parameters.size = 0
+
+//     if C.libcec_transmit(connection, &command) == 0 {
+//         fmt.Println("Failed to send command")
+//         return "Failed to send command"
+//     }
+
+//     // Now, you need to listen for the response.
+//     // This is a simplified loop, in practice, you would have timeout handling, and possibly this would be event-driven.
+//     for {
+//         msg := C.libcec_receive_message(connection)
+//         if msg.opcode == C.CEC_OPCODE_REPORT_POWER_STATUS {
+//             // Assuming the status is in the first parameter and is a direct mapping of CEC power status codes.
+//             switch msg.parameters.data[0] {
+//             case 0:
+//                 return "TV is on"
+//             case 1:
+//                 return "TV is in standby"
+//             case 2:
+//                 return "TV is in transition from standby to on"
+//             case 3:
+//                 return "TV is in transition from on to standby"
+//             default:
+//                 return "Unknown power status"
+//             }
+//         }
+//     }
+// }
+
+// func (ctrl *Controller) SelectHDMI1() {
+// 	connection := C.libcec_initialise(&ctrl.Configuration)
+// 	adapters := get_adapters(connection)
+// 	if len( adapters ) < 1 {
+// 		panic( "no adapters found" )
+// 	}
+// 	adapter := adapters[0]
+// 	comm := C.CString( adapter.Comm )
+
+// 	if C.libcec_open(connection, comm, C.CEC_DEFAULT_CONNECT_TIMEOUT) == 0 {
+// 		panic("Failed to open a connection to the adapter")
+// 	}
+
+// 	// Get the logical address of the current device.
+// 	logical_addresses := C.libcec_get_logical_addresses(connection)
+// 	logical_address := C.cec_logical_address(byte(logical_addresses.primary))
+
+// 	fmt.Println("Selecting HDMI 1")
+
+// 	var command C.cec_command
+// 	command.initiator = logical_address
+// 	command.destination = 0xF // Broadcast to all devices.
+// 	command.opcode_set = 1
+// 	command.opcode = C.CEC_OPCODE_ACTIVE_SOURCE // Opcode for "active source"
+// 	command.parameters.size = 2
+
+// 	// This is the physical address for HDMI 1 input, typically "1.0.0.0".
+// 	// This might need to be changed depending on your device's configuration.
+// 	command.parameters.data[0] = 0x10 // "1.0" part of the address
+// 	command.parameters.data[1] = 0x00 // ".0.0" part of the address
+
+// 	// Transmit the command
+// 	if result := C.libcec_transmit(connection, &command); result == 0 {
+// 		fmt.Println("Failed to send command")
+// 	} else {
+// 		fmt.Println("Command sent successfully")
+// 	}
+
+// 	C.libcec_close( connection )
+// 	C.libcec_destroy( connection )
+// 	// C.free( unsafe.Pointer( connection ) )
+// 	C.free( unsafe.Pointer( comm ) )
+// }
+
+// func (ctrl *Controller) SelectHDMI2() {
+// 	connection := C.libcec_initialise(&ctrl.Configuration)
+// 	adapters := get_adapters(connection)
+// 	if len(adapters) < 1 {
+// 		panic("no adapters found")
+// 	}
+// 	adapter := adapters[0]
+// 	comm := C.CString(adapter.Comm)
+// 	if C.libcec_open(connection, comm, C.CEC_DEFAULT_CONNECT_TIMEOUT) == 0 {
+// 		panic("Failed to open a connection to the adapter")
+// 	}
+
+// 	// Get the logical address of the current device.
+// 	logical_addresses := C.libcec_get_logical_addresses(connection)
+// 	logical_address := C.cec_logical_address(byte(logical_addresses.primary))
+
+// 	fmt.Println("Selecting HDMI 2")
+
+// 	var command C.cec_command
+// 	command.initiator = logical_address
+// 	command.destination = 0xF // Broadcast to all devices.
+// 	command.opcode_set = 1
+// 	command.opcode = 0x82 // Opcode for "active source"
+// 	command.parameters.size = 2
+// 	command.parameters.data[0] = 0x20  // New address (2.0.0.0), first part
+// 	command.parameters.data[1] = 0x00  // New address (2.0.0.0), second part
+
+
+// 	// Transmit the command
+// 	if result := C.libcec_transmit(connection, &command); result == 0 {
+// 		fmt.Println("Failed to send command")
+// 	} else {
+// 		fmt.Println("Command sent successfully")
+// 	}
+// 	// C.libcec_transmit(connection, &command)
+// 	// C.libcec_transmit(connection, &command)
+// 	// C.libcec_transmit(connection, &command)
+// 	// C.libcec_transmit(connection, &command)
+// 	// C.libcec_transmit(connection, &command)
+
+// 	// time.Sleep( 1 * time.Second )
+// 	// C.libcec_close( connection )
+// 	// C.libcec_destroy( connection )
+// 	// time.Sleep( 1 * time.Second )
+
+// 	// C.free( unsafe.Pointer( connection ) )
+// 	// C.free( unsafe.Pointer( comm ) )
+// }
 
 // Fishing for Menu Activation Requests
 // echo "tx 1F:44:09" | cec-client -s -d 31 && echo "tx 1F:45" | cec-client -s -d 31
